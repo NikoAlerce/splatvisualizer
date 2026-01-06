@@ -1,5 +1,5 @@
 {
   "name": "Ethereal Gaussian Splat Viewer",
-  "description": "A standalone WebGL viewer for point-cloud based Gaussian Splatting approximation. Features a custom soft-particle shader, additive blending, and smooth camera controls. Optimized for OBJKT.com.",
+  "description": "A standalone WebGL viewer for Gaussian Splatting (.spz) using Three.js and @niantic/gaussian-splatting. Optimized for OBJKT.com.",
   "requestFramePermissions": []
 }
