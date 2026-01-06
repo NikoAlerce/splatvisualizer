@@ -74,7 +74,7 @@
 
         // --- Configuration ---
         const CONFIG = {
-            file: './1.spz',
+            file: './scene.ply', // Updated to use the PLY file
             cameraFov: 50,
             cameraDistance: 3,
             autoRotateSpeed: 1.0,
@@ -148,7 +148,7 @@
 
         async function loadSplat() {
             const loaderDiv = document.getElementById('loader');
-            loaderDiv.innerText = "LOADING DATA (1.spz)...";
+            loaderDiv.innerText = "LOADING DATA (scene.ply)...";
 
             try {
                 // Initialize the splat mesh
