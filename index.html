@@ -30,21 +30,26 @@
             pointer-events: none;
             transition: opacity 0.8s ease-out;
             z-index: 10;
+            text-align: center;
+            width: 80%;
         }
         .loaded {
             opacity: 0;
         }
+        .error {
+            color: #ff3333 !important;
+        }
     </style>
 </head>
 <body>
-    <div id="loader">LOADING DATA...</div>
+    <div id="loader">INITIALIZING SYSTEM...</div>
 
-    <!-- Import Map for module resolution via CDN -->
+    <!-- Import Map: Using Three.js 0.160.0 to match @niantic/gaussian-splatting dev cycle -->
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.163.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.163.0/examples/jsm/",
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
                 "@niantic/gaussian-splatting": "https://unpkg.com/@niantic/gaussian-splatting@0.3.3/dist/gaussian-splatting.module.js"
             }
         }
@@ -59,7 +64,7 @@
         const CONFIG = {
             file: './1.spz',
             cameraFov: 50,
-            cameraDistance: 5,
+            cameraDistance: 2, // Closer start for inspection
             autoRotateSpeed: 1.0,
             bgColor: 0x000000
         };
@@ -69,65 +74,108 @@
         let splatMesh;
 
         function init() {
-            // 1. Setup Scene
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(CONFIG.bgColor);
-
-            // 2. Setup Camera
-            camera = new THREE.PerspectiveCamera(
-                CONFIG.cameraFov, 
-                window.innerWidth / window.innerHeight, 
-                0.1, 
-                100
-            );
-            camera.position.set(0, 0, CONFIG.cameraDistance);
-
-            // 3. Setup Renderer
-            renderer = new THREE.WebGLRenderer({ 
-                antialias: false, // Splats handle their own anti-aliasing mostly
-                powerPreference: "high-performance"
-            });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap at 2x for performance
-            document.body.appendChild(renderer.domElement);
-
-            // 4. Setup Controls
-            controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
-            controls.autoRotate = true;
-            controls.autoRotateSpeed = CONFIG.autoRotateSpeed;
-            controls.enablePan = false; // Keep focus on center
-            controls.minDistance = 1;
-            controls.maxDistance = 20;
-
-            // 5. Load Gaussian Splat
-            loadSplat();
-
-            // 6. Events
-            window.addEventListener('resize', onWindowResize);
+            const loaderDiv = document.getElementById('loader');
             
-            // 7. Start Loop
-            animate();
+            try {
+                // 1. Setup Scene
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(CONFIG.bgColor);
+
+                // 2. Setup Camera
+                camera = new THREE.PerspectiveCamera(
+                    CONFIG.cameraFov, 
+                    window.innerWidth / window.innerHeight, 
+                    0.1, 
+                    100
+                );
+                camera.position.set(0, 0, CONFIG.cameraDistance);
+
+                // 3. Setup Renderer
+                // WebGL2 is required for Gaussian Splats
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('webgl2');
+                if (!context) {
+                    throw new Error("WebGL 2 is not supported by this browser.");
+                }
+
+                renderer = new THREE.WebGLRenderer({ 
+                    canvas: canvas,
+                    context: context,
+                    antialias: false,
+                    powerPreference: "high-performance",
+                    stencil: false,
+                    depth: true
+                });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                document.body.appendChild(renderer.domElement);
+
+                // 4. Setup Controls
+                controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                controls.autoRotate = true;
+                controls.autoRotateSpeed = CONFIG.autoRotateSpeed;
+                controls.enablePan = false;
+                controls.minDistance = 0.1;
+                controls.maxDistance = 20;
+
+                // 5. Load Gaussian Splat
+                loadSplat();
+
+                // 6. Events
+                window.addEventListener('resize', onWindowResize);
+                
+                // 7. Start Loop
+                renderer.setAnimationLoop(animate);
+
+            } catch (err) {
+                console.error(err);
+                loaderDiv.innerText = "INIT ERROR: " + err.message;
+                loaderDiv.classList.add('error');
+            }
         }
 
         async function loadSplat() {
+            const loaderDiv = document.getElementById('loader');
+
             try {
+                loaderDiv.innerText = "CONNECTING TO DATA...";
+                
+                // Pre-fetch check (HEAD request) to ensure file exists and handle 404s gracefully
+                // before passing to the library which might hang or be opaque.
+                try {
+                    const check = await fetch(CONFIG.file, { method: 'HEAD' });
+                    if (!check.ok) {
+                        throw new Error(`File not found (${check.status})`);
+                    }
+                } catch (netErr) {
+                    // Fallback: If HEAD fails (e.g. CORS on some servers), try loading anyway, 
+                    // but log warning.
+                    console.warn("Pre-fetch check failed, attempting direct load:", netErr);
+                }
+
+                loaderDiv.innerText = "DOWNLOADING SPLAT...";
+                
                 splatMesh = new GaussianSplatMesh(camera, renderer);
                 
-                // Load the .spz file
+                // Provide visual update during load if library supports it? 
+                // Currently @niantic/gaussian-splatting load() is a Promise.
                 await splatMesh.load(CONFIG.file);
                 
                 scene.add(splatMesh);
                 
-                // Hide loader
-                const loader = document.getElementById('loader');
-                loader.classList.add('loaded');
-                setTimeout(() => loader.style.display = 'none', 1000);
+                loaderDiv.innerText = "RENDERING...";
+                setTimeout(() => {
+                    loaderDiv.classList.add('loaded');
+                    // Completely hide after fade
+                    setTimeout(() => loaderDiv.style.display = 'none', 1000);
+                }, 500);
 
             } catch (error) {
                 console.error("Error loading splat:", error);
-                document.getElementById('loader').innerText = "ERROR LOADING .SPZ FILE";
+                loaderDiv.innerText = "ERROR LOADING .SPZ:\n" + error.message;
+                loaderDiv.classList.add('error');
             }
         }
 
@@ -138,11 +186,7 @@
         }
 
         function animate() {
-            requestAnimationFrame(animate);
-
             controls.update();
-            
-            // Only render if scene is set up
             renderer.render(scene, camera);
         }
 
